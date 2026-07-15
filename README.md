@@ -16,6 +16,8 @@ AI-powered Ghidra query interface for reverse engineering agents.
 - **Crash debugging** — find which function contains a given address
 - **Configurable** — works with any Ghidra project via YAML config
 - **Headless export** — PyGhidra-based bulk export scripts
+- **Normalized IR evidence** — high P-code and CFG exports per function
+- **Function context bundles** — machine-readable callees, strings, globals, and CFG
 
 ## Installation
 
@@ -98,6 +100,10 @@ Environment variables: `GHIDRA_INSTALL_DIR`, `GHIDRA_PROJECT_DIR`, `GHIDRA_PROJE
 | `strings <pattern>` | Search strings |
 | `containing <addr>` | Find function containing address |
 | `decompile-class <class>` | Decompile all class methods |
+| `context <addr\|name>` | Export a JSON evidence bundle for a function |
+| `pcode <addr\|name>` | Show normalized high P-code JSON |
+| `cfg <addr\|name>` | Show control-flow graph JSON |
+| `asm <addr\|name>` | Show assembly captured during decompiled export |
 | `unimplemented [pattern]` | List unimplemented functions |
 | `remaining [class]` | Show remaining stubs |
 | `source-struct <name>` | Query struct from source |

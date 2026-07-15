@@ -170,6 +170,115 @@ def cmd_decompile(target: str, cfg: Config) -> int:
     return 0
 
 
+def cmd_ir(target: str, cfg: Config, key: str) -> int:
+    """Print exported P-code or CFG JSON for a function."""
+    if key not in {"pcode", "cfg"}:
+        print(f"ERROR: Unsupported IR kind: {key}")
+        return 1
+    filepath = find_function_file(target, cfg)
+    if not filepath:
+        print(f"ERROR: Function not found: {target}")
+        return 1
+    data = load_json(filepath)
+    artifact = data.get(key)
+    errors = data.get(f"{key}_errors", data.get("ir_errors", []))
+    valid = [
+        item
+        for item in artifact or []
+        if isinstance(item, dict) and "error" not in item
+    ]
+    if errors or not valid:
+        detail = f" ({'; '.join(str(error) for error in errors)})" if errors else ""
+        print(f"ERROR: No {key} export for {target}. Run: ghidra-bridge export decompiled")
+        if detail:
+            print(f"IR extraction detail:{detail}")
+        return 1
+    print(json.dumps({"schema_version": 1, "kind": key, "target": target, "data": valid}, indent=2))
+    return 0
+
+
+def cmd_context(target: str, cfg: Config) -> int:
+    """Print a machine-readable evidence bundle for one function."""
+    filepath = find_function_file(target, cfg)
+    if not filepath:
+        print(f"ERROR: Function not found: {target}")
+        return 1
+    function = load_json(filepath)
+    target_addr = normalize_address(str(function.get("address", target)))
+
+    strings_data = load_json(cfg.strings_file)
+    string_index = load_json(cfg.string_refs_by_function_file)
+    strings = _context_items(target_addr, strings_data, string_index)
+
+    globals_data = load_json(cfg.globals_file)
+    global_index = load_json(cfg.global_refs_by_function_file)
+    globals_found = _context_items(target_addr, globals_data, global_index)
+
+    bundle = {
+        "schema_version": 1,
+        "kind": "function-context",
+        "target": target,
+        "function": {
+            "address": function.get("address"),
+            "name": function.get("name"),
+            "signature": function.get("signature"),
+            "calling_convention": function.get("calling_convention"),
+            "callers": function.get("callers", []),
+            "callees": function.get("callees", []),
+        },
+        "strings": strings[:50],
+        "globals": globals_found[:50],
+        "cfg": (
+            []
+            if function.get("cfg_errors") or function.get("ir_errors")
+            else [
+                item
+                for item in function.get("cfg", [])
+                if isinstance(item, dict) and "index" in item
+            ]
+        ),
+    }
+    print(json.dumps(bundle, indent=2))
+    return 0
+
+
+def _context_items(target_addr: str, data: dict, by_function: dict) -> list[dict]:
+    """Resolve function-linked artifacts through an index, with legacy fallback."""
+    indexed_addresses = []
+    for func_addr, addresses in by_function.items():
+        if normalize_address(str(func_addr)) == target_addr and isinstance(addresses, list):
+            indexed_addresses.extend(str(address) for address in addresses)
+    if indexed_addresses:
+        normalized = {normalize_address(address) for address in indexed_addresses}
+        return [
+            item
+            for address, item in data.items()
+            if isinstance(item, dict) and normalize_address(str(address)) in normalized
+        ]
+
+    found = []
+    for item in data.values():
+        refs = item.get("references", []) if isinstance(item, dict) else []
+        if any(normalize_address(str(ref.get("func_addr", ""))) == target_addr for ref in refs):
+            found.append(item)
+    return found
+
+
+def cmd_asm(target: str, cfg: Config) -> int:
+    """Print assembly stored with a decompiled function export."""
+    filepath = find_function_file(target, cfg)
+    if not filepath:
+        print(f"ERROR: Function not found: {target}")
+        return 1
+    data = load_json(filepath)
+    assembly = data.get("assembly", [])
+    if not assembly:
+        print(f"ERROR: No assembly export for {target}. Run: ghidra-bridge export decompiled")
+        return 1
+    print("\n".join(str(line) for line in assembly))
+    return 0
+
+
 def cmd_search(pattern: str, cfg: Config) -> int:
     """Search for functions by name (address map + Ghidra index)."""
     address_map = _load_address_map(cfg)

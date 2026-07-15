@@ -8,6 +8,9 @@ import pytest
 
 from ghidra_ai_bridge.config import Config
 from ghidra_ai_bridge.query import (
+    cmd_asm,
+    cmd_context,
+    cmd_ir,
     normalize_address,
     find_function_file,
     load_json,
@@ -118,6 +121,114 @@ def test_find_function_file_by_name():
         result = find_function_file("MyClass::MyFunc", cfg)
         assert result is not None
         assert "00401000.json" in result
+
+
+def test_cmd_ir_prints_versioned_json(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cfg = _make_exports(
+            tmpdir,
+            functions={
+                "00401000": {
+                    "address": "00401000",
+                    "name": "test_func",
+                    "pcode": [{"opcode": "RETURN"}],
+                },
+            },
+            address_map={},
+        )
+        assert cmd_ir("0x401000", cfg, "pcode") == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["schema_version"] == 1
+        assert payload["data"][0]["opcode"] == "RETURN"
+
+
+def test_cmd_ir_rejects_extraction_error_objects(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cfg = _make_exports(
+            tmpdir,
+            functions={
+                "00401000": {
+                    "address": "00401000",
+                    "name": "test_func",
+                    "pcode": [{"error": "HighFunction unavailable"}],
+                    "pcode_errors": ["HighFunction unavailable"],
+                },
+            },
+            address_map={},
+        )
+        assert cmd_ir("0x401000", cfg, "pcode") == 1
+        assert "HighFunction unavailable" in capsys.readouterr().out
+
+
+def test_cmd_ir_rejects_partial_export_with_errors(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cfg = _make_exports(
+            tmpdir,
+            functions={
+                "00401000": {
+                    "address": "00401000",
+                    "name": "test_func",
+                    "pcode": [{"opcode": "RETURN"}],
+                    "pcode_errors": ["iteration stopped early"],
+                },
+            },
+            address_map={},
+        )
+        assert cmd_ir("0x401000", cfg, "pcode") == 1
+        assert "iteration stopped early" in capsys.readouterr().out
+
+
+def test_cmd_context_collects_referenced_strings_and_globals(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cfg = _make_exports(
+            tmpdir,
+            functions={
+                "00401000": {
+                    "address": "00401000",
+                    "name": "test_func",
+                    "signature": "void test_func()",
+                    "callees": [],
+                    "callers": [],
+                    "cfg": [],
+                },
+            },
+            address_map={},
+        )
+        with open(cfg.strings_file, "w") as f:
+            json.dump({"00500000": {
+                "address": "00500000",
+                "value": "hello",
+                "references": [{"func_addr": "00401000"}],
+            }}, f)
+        with open(cfg.globals_file, "w") as f:
+            json.dump({"00600000": {
+                "address": "00600000",
+                "name": "gValue",
+                "references": [{"func_addr": "00401000"}],
+            }}, f)
+
+        assert cmd_context("0x401000", cfg) == 0
+        payload = json.loads(capsys.readouterr().out)
+        assert payload["kind"] == "function-context"
+        assert payload["strings"][0]["value"] == "hello"
+        assert payload["globals"][0]["name"] == "gValue"
+
+
+def test_cmd_asm_prints_exported_instructions(capsys):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        cfg = _make_exports(
+            tmpdir,
+            functions={
+                "00401000": {
+                    "address": "00401000",
+                    "name": "test_func",
+                    "assembly": ["00401000  PUSH EBP", "00401001  RET"],
+                },
+            },
+            address_map={},
+        )
+        assert cmd_asm("0x401000", cfg) == 0
+        assert "PUSH EBP" in capsys.readouterr().out
 
 
 # ---------------------------------------------------------------------------

@@ -64,7 +64,8 @@ def _build_parser() -> argparse.ArgumentParser:
     # Query commands with required argument
     for cmd in ["decompile", "search", "xrefs-to", "xrefs-from", "struct",
                 "enum", "vtable", "global", "strings", "containing",
-                "decompile-class", "source-struct", "source-enum"]:
+                "decompile-class", "source-struct", "source-enum", "context",
+                "pcode", "cfg", "asm"]:
         p = sub.add_parser(cmd)
         p.add_argument("target", help="Address, name, or pattern")
 
@@ -139,6 +140,10 @@ def main(argv: list[str] | None = None) -> int:
         "decompile-class": lambda: query.cmd_decompile_class(args.target, cfg),
         "source-struct":   lambda: query.cmd_source_struct(args.target, cfg),
         "source-enum":     lambda: query.cmd_source_enum(args.target, cfg),
+        "context":         lambda: query.cmd_context(args.target, cfg),
+        "pcode":           lambda: query.cmd_ir(args.target, cfg, "pcode"),
+        "cfg":             lambda: query.cmd_ir(args.target, cfg, "cfg"),
+        "asm":             lambda: query.cmd_asm(args.target, cfg),
         "unimplemented":   lambda: query.cmd_unimplemented(cfg, args.filter),
         "remaining":       lambda: query.cmd_remaining(cfg, args.filter),
         "info":            lambda: query.cmd_info(cfg),

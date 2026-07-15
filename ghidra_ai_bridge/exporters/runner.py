@@ -183,6 +183,7 @@ def export_vtables(program, fm, sm, mem, output_dir: str) -> None:
 def export_strings(listing, ref_mgr, fm, output_dir: str) -> None:
     """Export strings and their references."""
     strings_data = {}
+    refs_by_function = {}
     print("[ExportStrings] Scanning for strings...")
 
     count = 0
@@ -209,11 +210,13 @@ def export_strings(listing, ref_mgr, fm, output_dir: str) -> None:
             from_addr = ref.getFromAddress()
             func = fm.getFunctionContaining(from_addr)
             if func:
+                func_addr = str(func.getEntryPoint())
                 refs.append({
-                    "func_addr": str(func.getEntryPoint()),
+                    "func_addr": func_addr,
                     "func_name": func.getName(),
                     "ref_addr": str(from_addr),
                 })
+                refs_by_function.setdefault(func_addr, []).append(str(addr))
 
         strings_data[str(addr)] = {
             "address": str(addr),
@@ -240,12 +243,15 @@ def export_strings(listing, ref_mgr, fm, output_dir: str) -> None:
         json.dump(strings_data, f, indent=2)
     with open(os.path.join(output_dir, "_strings_index.json"), "w") as f:
         json.dump(search_index, f, indent=2)
+    with open(os.path.join(output_dir, "_string_refs_by_function.json"), "w") as f:
+        json.dump(refs_by_function, f, indent=2)
     print(f"Exported {len(strings_data)} strings")
 
 
 def export_globals(sm, listing, ref_mgr, fm, mem, output_dir: str) -> None:
     """Export global variables."""
     globals_data = {}
+    refs_by_function = {}
     print("[ExportGlobals] Scanning for global variables...")
 
     data_blocks = []
@@ -277,10 +283,12 @@ def export_globals(sm, listing, ref_mgr, fm, mem, output_dir: str) -> None:
                 from_addr = ref.getFromAddress()
                 func = fm.getFunctionContaining(from_addr)
                 if func:
+                    func_addr = str(func.getEntryPoint())
                     refs.append({
-                        "func_addr": str(func.getEntryPoint()),
+                        "func_addr": func_addr,
                         "func_name": func.getName(),
                     })
+                    refs_by_function.setdefault(func_addr, []).append(str(addr))
             refs = refs[:20]
 
             value = None
@@ -306,16 +314,21 @@ def export_globals(sm, listing, ref_mgr, fm, mem, output_dir: str) -> None:
 
     with open(os.path.join(output_dir, "_globals.json"), "w") as f:
         json.dump(globals_data, f, indent=2)
+    with open(os.path.join(output_dir, "_global_refs_by_function.json"), "w") as f:
+        json.dump(refs_by_function, f, indent=2)
     print(f"Exported {len(globals_data)} globals")
 
 
-def export_decompiled(program, fm, ref_mgr, output_dir: str) -> None:
+def export_decompiled(program, fm, ref_mgr, output_dir: str, listing=None) -> None:
     """Export decompiled functions with cross-references."""
     from ghidra.app.decompiler import DecompInterface
     from ghidra.util.task import ConsoleTaskMonitor
 
     decomp = DecompInterface()
     decomp.openProgram(program)
+    ir_decomp = DecompInterface()
+    ir_decomp.setSimplificationStyle("normalize")
+    ir_decomp.openProgram(program)
     monitor = ConsoleTaskMonitor()
 
     functions = list(fm.getFunctions(True))
@@ -368,6 +381,19 @@ def export_decompiled(program, fm, ref_mgr, output_dir: str) -> None:
             "num_callees": len(callees),
         }
 
+        high_pcode = []
+        cfg_blocks = []
+        pcode_errors = []
+        cfg_errors = []
+        assembly = []
+        if listing is not None:
+            try:
+                assembly = [
+                    f"{instruction.getAddress()}  {instruction}"
+                    for instruction in listing.getInstructions(func.getBody(), True)
+                ]
+            except Exception:
+                assembly = []
         try:
             result = decomp.decompileFunction(func, 60, monitor)
             if result.decompileCompleted():
@@ -376,6 +402,18 @@ def export_decompiled(program, fm, ref_mgr, output_dir: str) -> None:
                 c_code = "// Decompilation failed"
         except Exception as e:
             c_code = f"// Error: {e}"
+        try:
+            ir_result = ir_decomp.decompileFunction(func, 60, monitor)
+            if ir_result.decompileCompleted():
+                high_pcode, cfg_blocks, pcode_errors, cfg_errors = _extract_high_ir(
+                    ir_result
+                )
+            else:
+                pcode_errors = ["Normalized IR decompilation failed"]
+                cfg_errors = ["Normalized IR decompilation failed"]
+        except Exception as e:
+            pcode_errors = [f"Normalized IR error: {e}"]
+            cfg_errors = [f"Normalized IR error: {e}"]
 
         func_data = {
             "address": addr,
@@ -389,6 +427,11 @@ def export_decompiled(program, fm, ref_mgr, output_dir: str) -> None:
             "callers": callers,
             "callees": callees,
             "data_refs": [],
+            "pcode": high_pcode,
+            "cfg": cfg_blocks,
+            "pcode_errors": pcode_errors,
+            "cfg_errors": cfg_errors,
+            "assembly": assembly,
         }
 
         safe_addr = addr.replace(":", "_")
@@ -401,6 +444,51 @@ def export_decompiled(program, fm, ref_mgr, output_dir: str) -> None:
         json.dump(index, f, indent=2)
 
     print(f"[ExportDecompiled] Complete! {total} functions exported")
+
+
+def _extract_high_ir(
+    result,
+) -> tuple[list[dict], list[dict], list[str], list[str]]:
+    """Extract normalized high P-code operations and CFG edges."""
+    operations = []
+    blocks = []
+    pcode_errors = []
+    cfg_errors = []
+    try:
+        high = result.getHighFunction()
+    except Exception as exc:
+        message = str(exc)
+        return ([], [], [message], [message])
+    if high is None:
+        message = "Decompiler returned no HighFunction"
+        return ([], [], [message], [message])
+    try:
+        iterator = high.getPcodeOps()
+        while iterator.hasNext():
+            op = iterator.next()
+            output = op.getOutput()
+            operations.append({
+                "seq": str(op.getSeqnum()),
+                "address": str(op.getSeqnum().getTarget()),
+                "opcode": str(op.getMnemonic()),
+                "output": str(output) if output is not None else None,
+                "inputs": [str(op.getInput(i)) for i in range(op.getNumInputs())],
+            })
+
+    except Exception as exc:
+        pcode_errors.append(f"P-code extraction failed: {exc}")
+    try:
+        for block in high.getBasicBlocks():
+            blocks.append({
+                "index": int(block.getIndex()),
+                "start": str(block.getStart()),
+                "stop": str(block.getStop()),
+                "out": [int(block.getOut(i).getIndex()) for i in range(block.getOutSize())],
+                "in": [int(block.getIn(i).getIndex()) for i in range(block.getInSize())],
+            })
+    except Exception as exc:
+        cfg_errors.append(f"CFG extraction failed: {exc}")
+    return operations, blocks, pcode_errors, cfg_errors
 
 
 def create_known_functions(flat_api, program, fm, listing, address_map_path: str) -> int:
@@ -523,7 +611,7 @@ def run_export(export_type: str, cfg: Config) -> int:
             export_vtables(program, fm, sm, mem, output_dir)
             export_strings(listing, ref_mgr, fm, output_dir)
             export_globals(sm, listing, ref_mgr, fm, mem, output_dir)
-            export_decompiled(program, fm, ref_mgr, output_dir)
+            export_decompiled(program, fm, ref_mgr, output_dir, listing)
         elif export_type == "structs":
             export_structs(dtm, output_dir)
         elif export_type == "vtables":
@@ -533,12 +621,12 @@ def run_export(export_type: str, cfg: Config) -> int:
         elif export_type == "globals":
             export_globals(sm, listing, ref_mgr, fm, mem, output_dir)
         elif export_type == "decompiled":
-            export_decompiled(program, fm, ref_mgr, output_dir)
+            export_decompiled(program, fm, ref_mgr, output_dir, listing)
         elif export_type == "create-functions":
             created = create_known_functions(flat_api, program, fm, listing, cfg.address_map_path)
             if created > 0:
                 print(f"\nRe-exporting decompiled functions to include the new ones...")
-                export_decompiled(program, fm, ref_mgr, output_dir)
+                export_decompiled(program, fm, ref_mgr, output_dir, listing)
         elif export_type == "fix-all":
             print("=== STEP 1: Creating missing functions ===")
             create_known_functions(flat_api, program, fm, listing, cfg.address_map_path)
@@ -547,7 +635,7 @@ def run_export(export_type: str, cfg: Config) -> int:
             export_vtables(program, fm, sm, mem, output_dir)
             export_strings(listing, ref_mgr, fm, output_dir)
             export_globals(sm, listing, ref_mgr, fm, mem, output_dir)
-            export_decompiled(program, fm, ref_mgr, output_dir)
+            export_decompiled(program, fm, ref_mgr, output_dir, listing)
         else:
             print(f"Unknown export type: {export_type}")
             return 1

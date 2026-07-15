@@ -78,6 +78,14 @@ class Config:
         return os.path.join(self.export_dir, "_strings_index.json")
 
     @property
+    def string_refs_by_function_file(self) -> str:
+        return os.path.join(self.export_dir, "_string_refs_by_function.json")
+
+    @property
+    def global_refs_by_function_file(self) -> str:
+        return os.path.join(self.export_dir, "_global_refs_by_function.json")
+
+    @property
     def source_structs_file(self) -> str:
         return os.path.join(self.export_dir, "_source_structs.json")
 
