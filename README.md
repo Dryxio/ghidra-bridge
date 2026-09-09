@@ -10,7 +10,7 @@ Ghidra Bridge provides a CLI and Python API that lets AI agents (or humans) quer
 
 Copy this into your agent:
 
-> Help me set up https://github.com/Dryxio/ghidra-ai-bridge. Read the README, check what's already installed on my computer, and help me install and configure the bridge, Ghidra, and any missing requirements. Ask me which program or existing Ghidra project I want to explore. Then get the bridge working and use it to explain one small function in plain language, showing the code and evidence behind your explanation.
+> Help me set up https://github.com/Dryxio/ghidra-bridge. Read the README, check what's already installed on my computer, and help me install and configure the bridge, Ghidra, and any missing requirements. Ask me which program or existing Ghidra project I want to explore. Then get the bridge working and use it to explain one small function in plain language, showing the code and evidence behind your explanation.
 
 Bring a program you want to understand, or an existing Ghidra project. Your agent can help prepare it for analysis.
 

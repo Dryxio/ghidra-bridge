@@ -20,7 +20,7 @@ headless = ["pyghidra>=1.0"]
 ghidra-bridge = "ghidra_ai_bridge.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/Dryxio/ghidra-ai-bridge"
+Homepage = "https://github.com/Dryxio/ghidra-bridge"
 
 [tool.hatch.build.targets.wheel]
 packages = ["ghidra_ai_bridge"]
