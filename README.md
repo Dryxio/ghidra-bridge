@@ -4,6 +4,16 @@ AI-powered Ghidra query interface for reverse engineering agents.
 
 `ghidra-ai-bridge` provides a CLI and Python API that lets AI agents (or humans) query Ghidra project data — decompiled code, structs, enums, vtables, cross-references, strings, and more — without running Ghidra interactively.
 
+## Get started with your AI
+
+**Give your AI this repo and tell it what you want to do.** It can check your setup, install the tools it needs, and walk you through anything that needs your help. Use an AI coding agent that can access files and run commands on your computer.
+
+Copy this into your agent:
+
+> Help me set up https://github.com/Dryxio/ghidra-ai-bridge. Read the README, check what's already installed on my computer, and help me install and configure the bridge, Ghidra, and any missing requirements. Ask me which program or existing Ghidra project I want to explore. Then get the bridge working and use it to explain one small function in plain language, showing the code and evidence behind your explanation.
+
+Bring a program you want to understand, or an existing Ghidra project. Your agent can help prepare it for analysis.
+
 ## Features
 
 - **Query decompiled code** by address or function name
@@ -18,6 +28,13 @@ AI-powered Ghidra query interface for reverse engineering agents.
 - **Headless export** — PyGhidra-based bulk export scripts
 - **Normalized IR evidence** — high P-code and CFG exports per function
 - **Function context bundles** — machine-readable callees, strings, globals, and CFG
+
+## Manual setup
+
+Prefer to install it yourself? Expand the instructions below.
+
+<details>
+<summary>Manual installation, configuration and examples</summary>
 
 ## Installation
 
@@ -81,6 +98,8 @@ binary:                                   # optional
 Config priority: CLI args > environment variables > YAML file > defaults.
 
 Environment variables: `GHIDRA_INSTALL_DIR`, `GHIDRA_PROJECT_DIR`, `GHIDRA_PROJECT_NAME`, `GHIDRA_PROGRAM_NAME`, `GHIDRA_EXPORT_DIR`.
+
+</details>
 
 ## Commands
 
