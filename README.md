@@ -1,8 +1,8 @@
-# ghidra-ai-bridge
+# Ghidra Bridge
 
-AI-powered Ghidra query interface for reverse engineering agents.
+Give your AI access to Ghidra’s program analysis.
 
-`ghidra-ai-bridge` provides a CLI and Python API that lets AI agents (or humans) query Ghidra project data — decompiled code, structs, enums, vtables, cross-references, strings, and more — without running Ghidra interactively.
+Ghidra Bridge provides a CLI and Python API that lets AI agents (or humans) query Ghidra project data — decompiled code, structs, enums, vtables, cross-references, strings, and more — without running Ghidra interactively.
 
 ## Get started with your AI
 
